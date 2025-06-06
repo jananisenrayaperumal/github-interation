@@ -14,6 +14,50 @@ frontend/.vscode
 frontend/.vscode
 frontend/.env
 
+# See https://docs.github.com/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# Compiled output
+frontend/dist
+frontend/tmp
+frontend/out-tsc
+frontend/bazel-out
+
+# Node
+frontend/node_modules
+frontend/npm-debug.log
+frontend/yarn-error.log
+
+# IDEs and editors
+frontend/.idea/
+frontend/.project
+frontend/.classpath
+frontend/.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Visual Studio Code
+frontend/.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/*
+
+# Miscellaneous
+frontend/.angular/cache
+frontend/.sass-cache/
+frontend/connect.lock
+frontend/coverage
+frontend/libpeerconnection.log
+testem.log
+frontend/typings
+
+# System files
+.DS_Store
+Thumbs.db
+
+
 # Node.js specific
 backend/node_modules/
 backend/dist/
