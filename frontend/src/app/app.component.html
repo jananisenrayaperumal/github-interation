@@ -1,0 +1,40 @@
+<div class="container">
+  <mat-accordion>
+    <mat-expansion-panel [expanded]="!isConnected">
+      <mat-expansion-panel-header>
+        <mat-panel-title>
+          <mat-icon>code</mat-icon>
+          GitHub
+          <mat-icon *ngIf="isConnected" class="green-icon"
+            >check_circle</mat-icon
+          >
+        </mat-panel-title>
+
+        <mat-panel-description *ngIf="isConnected" class="last-sync">
+          <div>Last Synced: {{ lastSynced }}</div>
+          <div>Sync type: Full</div>
+        </mat-panel-description>
+      </mat-expansion-panel-header>
+
+      <div *ngIf="!isConnected">
+        <button mat-flat-button color="primary" (click)="connectToGit()">
+          Connect to GitHub
+        </button>
+      </div>
+
+      <div *ngIf="isConnected">
+        <button mat-stroked-button color="warn" (click)="removeConnection()">
+          Remove <mat-icon>visibility_off</mat-icon>
+        </button>
+      </div>
+    </mat-expansion-panel>
+  </mat-accordion>
+
+  <div *ngIf="isBrowser">
+    <app-github-data-grid
+      *ngIf="isBrowser"
+      [isConnected]="isConnected"
+    ></app-github-data-grid>
+  </div>
+  <router-outlet></router-outlet>
+</div>

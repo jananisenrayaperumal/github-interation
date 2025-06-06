@@ -1,0 +1,62 @@
+<div>
+  <div class="header-section">
+    <h2 class="title">Github data from Database</h2>
+  </div>
+
+  <div class="filter-bar">
+    <mat-form-field appearance="outline" class="filter-field">
+      <mat-label>Active Integrations</mat-label>
+      <mat-select [(ngModel)]="selectedIntegration">
+        <mat-option *ngFor="let option of integrations" [value]="option">
+          {{ option }}
+        </mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="filter-field">
+      <mat-label>Entity</mat-label>
+      <mat-select
+        [(ngModel)]="selectedEntity"
+        (selectionChange)="onEntityChange($event.value)"
+      >
+        <mat-option *ngFor="let option of entities" [value]="option">
+          {{ option }}
+        </mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <div class="search-container">
+      <mat-form-field
+        appearance="outline"
+        class="search-field"
+        floatLabel="auto"
+      >
+        <mat-label>Search</mat-label>
+        <input matInput [(ngModel)]="searchText" (keyup.enter)="onSearch()" />
+        <button
+          matSuffix
+          mat-icon-button
+          color="primary"
+          (click)="onSearch()"
+          class="icon-btn"
+        >
+          <mat-icon>search</mat-icon>
+        </button>
+      </mat-form-field>
+    </div>
+  </div>
+
+  <div *ngIf="isBrowser">
+    <ag-grid-angular
+      class="ag-theme-alpine grid"
+      [rowData]="rowData"
+      [columnDefs]="columnDefs"
+      [defaultColDef]="defaultColDef"
+      [pagination]="true"
+      [paginationPageSize]="20"
+      [suppressRowClickSelection]="true"
+      [rowSelection]="'multiple'"
+      [animateRows]="true"
+    ></ag-grid-angular>
+  </div>
+</div>

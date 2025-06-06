@@ -1,0 +1,58 @@
+.header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 16px auto;
+}
+
+.title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+}
+
+.filter-field {
+  width: 200px;
+}
+
+.search-field {
+  flex-grow: 1;
+  max-width: 300px;
+}
+
+.search-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-field {
+  max-width: 300px;
+  width: 100%;
+  vertical-align: middle;
+}
+
+.icon-btn {
+  height: 56px;
+  width: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.grid {
+  height: 520px;
+  width: 100%;
+}
