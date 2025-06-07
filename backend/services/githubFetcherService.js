@@ -189,9 +189,13 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
           orgLogin: org,
           userGithubId: githubId,
           placeholder: false,
+          assignees: pr.assignees?.map(a => a.login) || [],
+          requested_reviewers: pr.requested_reviewers?.map(r => r.login) || [],
+          mergedBy: pr.merged_by?.login || null,
         },
         { upsert: true }
       );
+      
     }
   } catch (err) {
     console.error(`Failed to fetch pull requests for ${org}/${repo}:`, err.message);

@@ -15,6 +15,9 @@ const pullRequestSchema = new mongoose.Schema(
 		repoName: String,
 		orgLogin: String,
 		userGithubId: String,
+		assignees: [String],
+		requested_reviewers: [String],
+		mergedBy: String,
 		placeholder: { type: Boolean, default: false }
 	},
 	{ timestamps: true }

@@ -59,6 +59,13 @@ export class GithubDataGridComponent implements OnInit, OnChanges {
     filter: true,
     sortable: true,
     resizable: true,
+    wrapText: true,
+    autoHeight: true,
+    cellStyle: {
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    },
   };
 
   ngOnInit(): void {

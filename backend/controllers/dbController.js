@@ -18,7 +18,8 @@ const getCollectionData = async (req, res) => {
 	const collectionName = req.params.name;
 	try {
 		const projection = collectionName === "users" ? { githubToken: 0 } : {};
-		const data = await mongoose.connection.db.collection(collectionName).find({}, { projection }).toArray();
+		const filter = collectionName === "pullrequests" ? { placeholder: { $ne: true } } : {};
+		const data = await mongoose.connection.db.collection(collectionName).find(filter, { projection }).toArray();
 		console.log(data.flat());
 		res.status(200).json(data);
 	} catch (error) {
