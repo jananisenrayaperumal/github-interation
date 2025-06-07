@@ -95,15 +95,47 @@ export class GithubDataGridComponent implements OnInit, OnChanges {
     });
   }
 
+  flattenObject(obj: any, parentKey = '', result: any = {}) {
+    for (const key in obj) {
+      if (!obj.hasOwnProperty(key)) continue;
+      const value = obj[key];
+
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          if (typeof item === 'object' && item !== null) {
+            for (const nestedKey in item) {
+              if (item.hasOwnProperty(nestedKey)) {
+                const flatKey = `${key}-${nestedKey}`;
+                result[flatKey] = item[nestedKey];
+              }
+            }
+          } else {
+            result[key] = value.join(', ');
+          }
+        });
+      } else if (typeof value === 'object' && value !== null) {
+        this.flattenObject(value, key, result);
+      } else {
+        const flatKey = parentKey ? `${parentKey}-${key}` : key;
+        result[flatKey] = value;
+      }
+    }
+    return result;
+  }
+
   fetchCollectionData(collection: string) {
     this.githubService.getDataFromCollection(collection).subscribe({
       next: (data) => {
-        this.rowData = data;
+        const flattenedData = data.map((item) => this.flattenObject(item));
+        this.rowData = flattenedData;
 
-        if (data.length > 0) {
-          this.columnDefs = Object.keys(data[0]).map((key) => ({
+        if (flattenedData.length > 0) {
+          this.columnDefs = Object.keys(flattenedData[0]).map((key) => ({
             field: key,
             headerName: this.toTitleCase(key),
+            tooltipField: key,
+            autoHeight: true,
+            wrapText: true,
           }));
         } else {
           this.columnDefs = [];
