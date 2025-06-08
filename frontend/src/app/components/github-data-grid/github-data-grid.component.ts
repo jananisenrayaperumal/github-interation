@@ -163,13 +163,47 @@ export class GithubDataGridComponent
         this.rowData = flattenedData;
 
         if (flattenedData.length > 0) {
-          this.columnDefs = Object.keys(flattenedData[0]).map((key) => ({
-            field: key,
-            headerName: this.toTitleCase(key),
-            tooltipField: key,
-            autoHeight: true,
-            wrapText: true,
-          }));
+          this.columnDefs = Object.keys(flattenedData[0]).map((key) => {
+            const baseColumnDef = {
+              field: key,
+              headerName: this.toTitleCase(key),
+              tooltipField: key,
+              autoHeight: true,
+              wrapText: true,
+              filter: true,
+            };
+
+            // Check if this column contains date data and apply date filter
+            if (this.isDateColumn(key, flattenedData[0][key])) {
+              return {
+                ...baseColumnDef,
+                filter: 'agDateColumnFilter',
+                filterParams: {
+                  comparator: (
+                    filterLocalDateAtMidnight: Date,
+                    cellValue: string
+                  ) => {
+                    if (!cellValue) return -1;
+
+                    const cellDate = new Date(cellValue);
+                    if (isNaN(cellDate.getTime())) return -1;
+
+                    cellDate.setHours(0, 0, 0, 0);
+
+                    if (
+                      filterLocalDateAtMidnight.getTime() === cellDate.getTime()
+                    ) {
+                      return 0;
+                    }
+                    return cellDate < filterLocalDateAtMidnight ? -1 : 1;
+                  },
+                  browserDatePicker: true,
+                },
+              };
+            }
+
+            return baseColumnDef;
+          });
         } else {
           this.columnDefs = [];
         }
@@ -213,6 +247,11 @@ export class GithubDataGridComponent
   //   });
   // }
 
+  private isDateColumn(columnName: string, sampleValue: any): boolean {
+    const dateColumns = ['createdAt', 'updatedAt', 'date', 'timestamp'];
+    return dateColumns.includes(columnName);
+  }
+
   onSearch(): void {
     const query = this.searchText.trim();
 
@@ -239,7 +278,7 @@ export class GithubDataGridComponent
               cellRenderer: (params: any) => {
                 const user =
                   params.data.user || params.data.userLogin || 'unknown';
-                const encodedUser = encodeURIComponent(user); // to handle spaces or special chars
+                const encodedUser = encodeURIComponent(user);
                 return `
                   <a 
                     href="/user-search?user=${encodedUser}" 
@@ -250,15 +289,48 @@ export class GithubDataGridComponent
                   </a>`;
               },
               width: 100,
-              // suppressMenu: true,
               sortable: false,
               filter: false,
             },
-            ...Object.keys(data[0]).map((key) => ({
-              field: key,
-              headerName: this.toTitleCase(key),
-              filter: true,
-            })),
+            ...Object.keys(data[0]).map((key) => {
+              const baseColumnDef = {
+                field: key,
+                headerName: this.toTitleCase(key),
+                filter: true,
+              };
+
+              // Apply date filter for date columns in search results too
+              if (this.isDateColumn(key, data[0][key])) {
+                return {
+                  ...baseColumnDef,
+                  filter: 'agDateColumnFilter',
+                  filterParams: {
+                    comparator: (
+                      filterLocalDateAtMidnight: Date,
+                      cellValue: string
+                    ) => {
+                      if (!cellValue) return -1;
+
+                      const cellDate = new Date(cellValue);
+                      if (isNaN(cellDate.getTime())) return -1;
+
+                      cellDate.setHours(0, 0, 0, 0);
+
+                      if (
+                        filterLocalDateAtMidnight.getTime() ===
+                        cellDate.getTime()
+                      ) {
+                        return 0;
+                      }
+                      return cellDate < filterLocalDateAtMidnight ? -1 : 1;
+                    },
+                    browserDatePicker: true,
+                  },
+                };
+              }
+
+              return baseColumnDef;
+            }),
           ];
         } else {
           this.columnDefs = [];

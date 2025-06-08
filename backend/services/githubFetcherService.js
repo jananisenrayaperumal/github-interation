@@ -154,98 +154,267 @@ async function fetchAndStoreIssues(org, repo, token) {
 }
 
 async function fetchAndStorePullRequests(org, repo, token, githubId) {
-  let page = 1;
-  const allPRs = [];
-
+  console.log(`Starting to fetch PRs for ${org}/${repo}`);
+  
   try {
-    while (true) {
-      const issues = (
-        await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/issues`, {
-          headers: { Authorization: `Bearer ${token}` },
-          params: { state: 'all', per_page: 100, page },
-        })
-      ).data;
+    // Step 1: Get repo info to check if it's a fork
+    const repoInfo = await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
 
-      if (!issues.length) break;
+    console.log(`Repo info: ${repoInfo.data.full_name}`);
+    console.log(`Is fork: ${repoInfo.data.fork}`);
 
-      const prs = issues.filter((i) => i.pull_request);
-      allPRs.push(...prs);
+    let targetOrg = org;
+    let targetRepo = repo;
+    let sourceType = 'direct';
 
-      page++;
+    // Step 2: If it's a fork, fetch PRs from parent repo instead
+    if (repoInfo.data.fork && repoInfo.data.parent) {
+      const parentInfo = repoInfo.data.parent;
+      console.log(`Parent repo: ${parentInfo.full_name}`);
+      console.log(`Fetching PRs from parent repo instead of fork`);
+      
+      targetOrg = parentInfo.owner.login;
+      targetRepo = parentInfo.name;
+      sourceType = 'parent';
     }
 
-    if (allPRs.length === 0) {
+    // Step 3: Fetch PRs from target repo (either original or parent)
+    const PR_LIMIT = 100;
+    const allStates = ['open', 'closed', 'all'];
+    const allPRs = new Map(); // Use Map to avoid duplicates by PR ID
+    
+    console.log(`Limiting to first ${PR_LIMIT} PRs`);
+    
+    for (const state of allStates) {
+      if (allPRs.size >= PR_LIMIT) {
+        console.log(`Reached PR limit of ${PR_LIMIT}, stopping fetch`);
+        break;
+      }
+      
+      console.log(`Fetching ${state} PRs for ${targetOrg}/${targetRepo}`);
+      let page = 1;
+      
+      while (allPRs.size < PR_LIMIT) {
+        console.log(`Fetching ${state} PRs - page ${page} (Current total: ${allPRs.size}/${PR_LIMIT})`);
+        
+        const { data: prs } = await axios.get(`${GIT_BASE_API}/repos/${targetOrg}/${targetRepo}/pulls`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            state: state,
+            per_page: 100,
+            page: page,
+            sort: 'created',
+            direction: 'desc'
+          }
+        });
+
+        if (!prs || prs.length === 0) {
+          console.log(`No more ${state} PRs on page ${page}`);
+          break;
+        }
+
+        // Add to Map to avoid duplicates, but respect the limit
+        let addedThisPage = 0;
+        for (const pr of prs) {
+          if (pr && pr.id && !allPRs.has(pr.id)) {
+            if (allPRs.size >= PR_LIMIT) {
+              console.log(`Reached PR limit of ${PR_LIMIT} while processing page ${page}`);
+              break;
+            }
+            allPRs.set(pr.id, pr);
+            addedThisPage++;
+          }
+        }
+
+        console.log(`Added ${addedThisPage} new PRs from page ${page} (Total unique: ${allPRs.size}/${PR_LIMIT})`);
+        
+        if (allPRs.size >= PR_LIMIT) {
+          console.log(`Successfully reached PR limit of ${PR_LIMIT}`);
+          break;
+        }
+        
+        page++;
+      }
+    }
+
+    console.log(`Total unique PRs found: ${allPRs.size} (Limited to ${PR_LIMIT})`);
+
+    if (allPRs.size === 0) {
+      console.log(`No PRs found, creating placeholder for ${org}/${repo}`);
       await PullRequest.updateOne(
         { repoName: repo, orgLogin: org, placeholder: true },
-        { repoName: repo, orgLogin: org, placeholder: true, userGithubId: githubId },
+        { 
+          repoName: repo, 
+          orgLogin: org, 
+          placeholder: true, 
+          userGithubId: githubId,
+          sourceType: sourceType,
+          sourceRepo: `${targetOrg}/${targetRepo}`,
+          parentRepo: repoInfo.data.parent?.full_name || null,
+          limitApplied: PR_LIMIT
+        },
         { upsert: true }
       );
       return;
     }
 
-    for (const pr of allPRs) {
-      const prDetails = (
-        await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/pulls/${pr.number}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-      ).data;
+    // Step 4: Process and store each unique PR
+    let processedCount = 0;
+    for (const [prId, prDetails] of allPRs) {
+      try {
+        // Get additional details for merged PRs
+        let mergeCommitSha = null;
+        if (prDetails.merged_at && prDetails.merge_commit_sha) {
+          mergeCommitSha = prDetails.merge_commit_sha;
+        }
 
-      await PullRequest.updateOne(
-        { id: prDetails.id },
-        {
-          id: prDetails.id,
-          number: prDetails.number,
-          title: prDetails.title,
-          state: prDetails.state,
-          createdAt: prDetails.created_at,
-          updatedAt: prDetails.updated_at,
-          closedAt: prDetails.closed_at,
-          mergedAt: prDetails.merged_at,
-          userLogin: prDetails.user?.login,
-          html_url: prDetails.html_url,
-          repoName: repo,
-          orgLogin: org,
-          userGithubId: githubId,
-          placeholder: false,
-          assignees: prDetails.assignees?.map((a) => a.login) || [],
-          requested_reviewers: prDetails.requested_reviewers?.map((r) => r.login) || [],
-          mergedBy: prDetails.merged_by?.login || null,
-        },
-        { upsert: true }
-      );
+        await PullRequest.updateOne(
+          { id: prDetails.id },
+          {
+            id: prDetails.id,
+            number: prDetails.number,
+            title: prDetails.title,
+            body: prDetails.body || '',
+            state: prDetails.state,
+            createdAt: prDetails.created_at,
+            updatedAt: prDetails.updated_at,
+            closedAt: prDetails.closed_at,
+            mergedAt: prDetails.merged_at,
+            merged: prDetails.merged || false,
+            mergeable: prDetails.mergeable,
+            mergeCommitSha: mergeCommitSha,
+            userLogin: prDetails.user?.login,
+            html_url: prDetails.html_url,
+            diff_url: prDetails.diff_url,
+            patch_url: prDetails.patch_url,
+            // Store original fork info + source info
+            repoName: repo, // Original fork repo name
+            orgLogin: org, // Original fork org
+            sourceRepo: `${targetOrg}/${targetRepo}`, // Where PR actually came from
+            sourceType: sourceType, // 'direct' or 'parent'
+            parentRepo: repoInfo.data.parent?.full_name || null,
+            userGithubId: githubId,
+            placeholder: false,
+            assignees: prDetails.assignees?.map((a) => a.login) || [],
+            requested_reviewers: prDetails.requested_reviewers?.map((r) => r.login) || [],
+            mergedBy: prDetails.merged_by?.login || null,
+            draft: prDetails.draft || false,
+            locked: prDetails.locked || false,
+            // Additional useful fields
+            head: {
+              ref: prDetails.head?.ref,
+              sha: prDetails.head?.sha,
+              label: prDetails.head?.label
+            },
+            base: {
+              ref: prDetails.base?.ref,
+              sha: prDetails.base?.sha,
+              label: prDetails.base?.label
+            },
+            comments: prDetails.comments || 0,
+            review_comments: prDetails.review_comments || 0,
+            commits: prDetails.commits || 0,
+            additions: prDetails.additions || 0,
+            deletions: prDetails.deletions || 0,
+            changed_files: prDetails.changed_files || 0
+          },
+          { upsert: true }
+        );
+
+        processedCount++;
+        
+        if (processedCount % 50 === 0) {
+          console.log(`Processed ${processedCount}/${allPRs.size} PRs`);
+        }
+
+      } catch (prError) {
+        console.error(`Error processing PR ${prDetails.number}:`, prError.message);
+      }
     }
+
+    console.log(`Successfully processed ${processedCount} PRs for ${org}/${repo}`);
+
+    // Log summary by state
+    const summary = {
+      open: Array.from(allPRs.values()).filter(pr => pr.state === 'open').length,
+      closed: Array.from(allPRs.values()).filter(pr => pr.state === 'closed' && !pr.merged_at).length,
+      merged: Array.from(allPRs.values()).filter(pr => pr.merged_at).length,
+      sourceType: sourceType,
+      sourceRepo: `${targetOrg}/${targetRepo}`,
+      parentRepo: repoInfo.data.parent?.full_name || null,
+      totalFetched: allPRs.size,
+      limitApplied: PR_LIMIT
+    };
+    
+    console.log(`PR Summary for ${org}/${repo}:`, summary);
+
   } catch (err) {
     console.error(`Failed to fetch pull requests for ${org}/${repo}:`, err.message);
+    console.error('Error details:', err.response?.data || err);
   }
 }
 
-
-
 async function fetchAndStoreCommits(org, repo, token, githubId) {
-  const commits = (
-    await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/commits`, {
-      headers: { Authorization: `Bearer ${token}` },
+  let totalCommits = 0;
+
+  // Step 1: Get all branches
+  const branches = (
+    await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/branches`, {
+      headers: { Authorization: `Bearer ${token}` }
     })
   ).data;
 
-  for (const commit of commits) {
-    await Commit.updateOne(
-      { sha: commit.sha },
-      {
-        sha: commit.sha,
-        message: commit.commit.message,
-        authorName: commit.commit.author?.name,
-        authorEmail: commit.commit.author?.email,
-        date: commit.commit.author?.date,
-        html_url: commit.html_url,
-        repoName: repo,
-        orgLogin: org,
-        userGithubId: githubId,
-      },
-      { upsert: true }
-    );
+  // Step 2: Loop through each branch
+  for (const branch of branches) {
+    let page = 1;
+
+    while (true) {
+      const commits = (
+        await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/commits`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            sha: branch.name,       // important: target branch
+            per_page: 100,
+            page,
+            since: "2000-01-01T00:00:00Z"
+          }
+        })
+      ).data;
+
+      if (!commits.length) break;
+
+      for (const commit of commits) {
+        if (!commit?.sha) continue;
+
+        await Commit.updateOne(
+          { sha: commit.sha },
+          {
+            sha: commit.sha,
+            message: commit.commit.message,
+            authorName: commit.commit.author?.name,
+            authorEmail: commit.commit.author?.email,
+            date: commit.commit.author?.date,
+            html_url: commit.html_url,
+            repoName: repo,
+            orgLogin: org,
+            userGithubId: githubId,
+            branch: branch.name  // optional: for better tracking
+          },
+          { upsert: true }
+        );
+
+        totalCommits++;
+      }
+
+      page++;
+    }
   }
+
+  console.log(`Total commits fetched for ${org}/${repo}: ${totalCommits}`);
 }
+
 
 module.exports = {
   fetchAndStoreOrganizations,
