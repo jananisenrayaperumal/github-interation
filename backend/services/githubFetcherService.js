@@ -103,27 +103,150 @@ async function fetchAndStoreRepos(orgLogin, token, githubId) {
 }
 
 async function fetchAndStoreIssues(org, repo, token) {
-  try {
-    const issues = (
-      await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/issues`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { state: 'all', per_page: 100 }
-      })
-    ).data;
+  const ISSUE_LIMIT = 10;
+  let totalIssues = 0;
+  let page = 1;
+  let allIssues = [];
 
-    if (issues.length === 0) {
+  try {
+    console.log(`Starting to fetch issues for ${org}/${repo} (limit: ${ISSUE_LIMIT})`);
+
+    // Step 1: Get repo info to check if it's a fork and has issues enabled
+    const repoInfo = await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    console.log(`Repo info: ${repoInfo.data.full_name}`);
+    console.log(`Is fork: ${repoInfo.data.fork}`);
+    console.log(`Has issues: ${repoInfo.data.has_issues}`);
+
+    let targetOrg = org;
+    let targetRepo = repo;
+    let sourceType = 'direct';
+
+    // Step 2: If it's a fork, check if we should fetch from parent repo
+    if (repoInfo.data.fork && repoInfo.data.parent) {
+      const parentInfo = repoInfo.data.parent;
+      console.log(`Parent repo: ${parentInfo.full_name}`);
+      console.log(`Parent has issues: ${parentInfo.has_issues}`);
+      
+      // If current fork doesn't have issues but parent does, fetch from parent
+      if (!repoInfo.data.has_issues && parentInfo.has_issues) {
+        console.log(`Fork has no issues, fetching from parent repo instead`);
+        targetOrg = parentInfo.owner.login;
+        targetRepo = parentInfo.name;
+        sourceType = 'parent';
+      } else if (repoInfo.data.has_issues) {
+        console.log(`Fork has its own issues enabled, fetching from fork`);
+      } else {
+        console.log(`Neither fork nor parent has issues enabled`);
+      }
+    } else if (!repoInfo.data.has_issues) {
+      console.log(`Repository has issues disabled`);
+    }
+
+    // Step 3: Check if target repo has issues enabled
+    if (sourceType === 'parent') {
+      // Already checked parent has issues
+    } else if (!repoInfo.data.has_issues) {
+      console.log(`No issues to fetch for ${org}/${repo} - issues disabled`);
       await Issue.updateOne(
         { repository: repo, org, placeholder: true },
-        { repository: repo, org, placeholder: true },
+        { 
+          repository: repo, 
+          org, 
+          placeholder: true,
+          totalFetched: 0,
+          limitApplied: ISSUE_LIMIT,
+          reason: 'issues_disabled',
+          sourceType: sourceType,
+          sourceRepo: `${targetOrg}/${targetRepo}`
+        },
         { upsert: true }
       );
       return;
     }
 
-    for (const issue of issues) {
-      if (issue.pull_request) continue;
+    // Step 4: Fetch issues from target repo (either original or parent)
+    console.log(`Fetching issues from ${targetOrg}/${targetRepo} (source: ${sourceType})`);
+
+    while (totalIssues < ISSUE_LIMIT) {
+      const remainingIssues = ISSUE_LIMIT - totalIssues;
+      const perPage = Math.min(100, remainingIssues);
+
+      console.log(`Fetching issues page ${page} (${totalIssues}/${ISSUE_LIMIT} fetched so far)`);
+
+      const response = await axios.get(`${GIT_BASE_API}/repos/${targetOrg}/${targetRepo}/issues`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { 
+          state: 'all', 
+          per_page: perPage,
+          page: page,
+          sort: 'created',
+          direction: 'desc'
+        }
+      });
+
+      const issues = response.data;
+
+      // Break if no more issues
+      if (!issues.length) {
+        console.log(`No more issues found on page ${page}`);
+        break;
+      }
+
+      // Filter out pull requests
+      const actualIssues = issues.filter(issue => !issue.pull_request);
+      const prCount = issues.length - actualIssues.length;
+      
+      allIssues = allIssues.concat(actualIssues);
+      totalIssues += actualIssues.length;
+      
+      console.log(`Found ${actualIssues.length} actual issues on page ${page} (${prCount} were PRs)`);
+
+      // Break if we've reached the limit
+      if (totalIssues >= ISSUE_LIMIT) {
+        console.log(`Reached issue limit of ${ISSUE_LIMIT}`);
+        break;
+      }
+
+      // If we got less than requested per_page, likely no more pages
+      if (issues.length < perPage) {
+        console.log(`Got ${issues.length} items, less than requested ${perPage}. Likely last page.`);
+        break;
+      }
+
+      page++;
+    }
+
+    console.log(`Total issues fetched for ${org}/${repo}: ${allIssues.length}`);
+
+    // Handle case where no issues are found
+    if (allIssues.length === 0) {
+      console.log(`No issues found for ${org}/${repo}, creating placeholder`);
+      await Issue.updateOne(
+        { repository: repo, org, placeholder: true },
+        { 
+          repository: repo, 
+          org, 
+          placeholder: true,
+          totalFetched: 0,
+          limitApplied: ISSUE_LIMIT,
+          reason: 'no_issues_found',
+          sourceType: sourceType,
+          sourceRepo: `${targetOrg}/${targetRepo}`,
+          parentRepo: repoInfo.data.parent?.full_name || null
+        },
+        { upsert: true }
+      );
+      return;
+    }
+
+    // Step 5: Store all issues
+    let processedCount = 0;
+    for (const issue of allIssues) {
       if (!issue.id) {
-        console.warn("Skipping issue with missing id:", issue);
+        console.warn("Skipping issue with missing id:", issue.title || 'Unknown');
         continue;
       }
     
@@ -131,30 +254,71 @@ async function fetchAndStoreIssues(org, repo, token) {
         { issueId: issue.id },
         {
           issueId: issue.id,
+          number: issue.number,
           title: issue.title,
           body: issue.body,
           state: issue.state,
           createdAt: issue.created_at,
           updatedAt: issue.updated_at,
           closedAt: issue.closed_at,
-          repository: repo,
-          org,
+          repository: repo, // Original fork repo name
+          org, // Original fork org
+          sourceRepo: `${targetOrg}/${targetRepo}`, // Where issues actually came from
+          sourceType: sourceType, // 'direct' or 'parent'
+          parentRepo: repoInfo.data.parent?.full_name || null,
           user: issue.user,
+          assignees: issue.assignees || [],
           labels: issue.labels,
           comments: issue.comments,
           url: issue.html_url,
+          locked: issue.locked || false,
+          milestone: issue.milestone,
+          placeholder: false
         },
         { upsert: true }
       );
+
+      processedCount++;
+      
+      if (processedCount % 50 === 0) {
+        console.log(`Processed ${processedCount}/${allIssues.length} issues`);
+      }
     }
+
+    console.log(`Successfully processed ${processedCount} issues for ${org}/${repo}`);
+
+    // Log summary by state
+    const summary = {
+      open: allIssues.filter(issue => issue.state === 'open').length,
+      closed: allIssues.filter(issue => issue.state === 'closed').length,
+      totalFetched: allIssues.length,
+      limitApplied: ISSUE_LIMIT,
+      sourceType: sourceType,
+      sourceRepo: `${targetOrg}/${targetRepo}`,
+      parentRepo: repoInfo.data.parent?.full_name || null
+    };
+    
+    console.log(`Issue Summary for ${org}/${repo}:`, summary);
     
   } catch (err) {
     console.error(`Failed to fetch issues for ${org}/${repo}:`, err.message);
+    
+    if (err.response?.status === 403) {
+      console.error('Rate limit exceeded or insufficient permissions');
+    } else if (err.response?.status === 404) {
+      console.error('Repository not found or not accessible');
+    } else if (err.response?.status === 410) {
+      console.error('Issues are disabled for this repository');
+    }
+    
+    console.error('Error details:', {
+      status: err.response?.status,
+      statusText: err.response?.statusText
+    });
   }
 }
 
 async function fetchAndStorePullRequests(org, repo, token, githubId) {
-  console.log(`Starting to fetch PRs for ${org}/${repo}`);
   
   try {
     // Step 1: Get repo info to check if it's a fork
@@ -162,8 +326,6 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
       headers: { Authorization: `Bearer ${token}` }
     });
 
-    console.log(`Repo info: ${repoInfo.data.full_name}`);
-    console.log(`Is fork: ${repoInfo.data.fork}`);
 
     let targetOrg = org;
     let targetRepo = repo;
@@ -172,8 +334,6 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
     // Step 2: If it's a fork, fetch PRs from parent repo instead
     if (repoInfo.data.fork && repoInfo.data.parent) {
       const parentInfo = repoInfo.data.parent;
-      console.log(`Parent repo: ${parentInfo.full_name}`);
-      console.log(`Fetching PRs from parent repo instead of fork`);
       
       targetOrg = parentInfo.owner.login;
       targetRepo = parentInfo.name;
@@ -181,23 +341,19 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
     }
 
     // Step 3: Fetch PRs from target repo (either original or parent)
-    const PR_LIMIT = 100;
+    const PR_LIMIT = 10;
     const allStates = ['open', 'closed', 'all'];
     const allPRs = new Map(); // Use Map to avoid duplicates by PR ID
     
-    console.log(`Limiting to first ${PR_LIMIT} PRs`);
     
     for (const state of allStates) {
       if (allPRs.size >= PR_LIMIT) {
-        console.log(`Reached PR limit of ${PR_LIMIT}, stopping fetch`);
         break;
       }
       
-      console.log(`Fetching ${state} PRs for ${targetOrg}/${targetRepo}`);
       let page = 1;
       
       while (allPRs.size < PR_LIMIT) {
-        console.log(`Fetching ${state} PRs - page ${page} (Current total: ${allPRs.size}/${PR_LIMIT})`);
         
         const { data: prs } = await axios.get(`${GIT_BASE_API}/repos/${targetOrg}/${targetRepo}/pulls`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -211,7 +367,6 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
         });
 
         if (!prs || prs.length === 0) {
-          console.log(`No more ${state} PRs on page ${page}`);
           break;
         }
 
@@ -220,7 +375,6 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
         for (const pr of prs) {
           if (pr && pr.id && !allPRs.has(pr.id)) {
             if (allPRs.size >= PR_LIMIT) {
-              console.log(`Reached PR limit of ${PR_LIMIT} while processing page ${page}`);
               break;
             }
             allPRs.set(pr.id, pr);
@@ -228,10 +382,8 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
           }
         }
 
-        console.log(`Added ${addedThisPage} new PRs from page ${page} (Total unique: ${allPRs.size}/${PR_LIMIT})`);
         
         if (allPRs.size >= PR_LIMIT) {
-          console.log(`Successfully reached PR limit of ${PR_LIMIT}`);
           break;
         }
         
@@ -239,10 +391,8 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
       }
     }
 
-    console.log(`Total unique PRs found: ${allPRs.size} (Limited to ${PR_LIMIT})`);
 
     if (allPRs.size === 0) {
-      console.log(`No PRs found, creating placeholder for ${org}/${repo}`);
       await PullRequest.updateOne(
         { repoName: repo, orgLogin: org, placeholder: true },
         { 
@@ -334,7 +484,6 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
       }
     }
 
-    console.log(`Successfully processed ${processedCount} PRs for ${org}/${repo}`);
 
     // Log summary by state
     const summary = {
@@ -348,7 +497,6 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
       limitApplied: PR_LIMIT
     };
     
-    console.log(`PR Summary for ${org}/${repo}:`, summary);
 
   } catch (err) {
     console.error(`Failed to fetch pull requests for ${org}/${repo}:`, err.message);
@@ -357,62 +505,86 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
 }
 
 async function fetchAndStoreCommits(org, repo, token, githubId) {
+  const COMMIT_LIMIT_PER_BRANCH = 20;
   let totalCommits = 0;
 
-  // Step 1: Get all branches
-  const branches = (
-    await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/branches`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-  ).data;
+  try {
+    // Step 1: Get all branches
+    const branches = (
+      await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/branches`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+    ).data;
 
-  // Step 2: Loop through each branch
-  for (const branch of branches) {
-    let page = 1;
+    // Step 2: Loop through each branch
+    for (const branch of branches) {
+      let branchCommits = 0;
+      let page = 1;
 
-    while (true) {
-      const commits = (
-        await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/commits`, {
-          headers: { Authorization: `Bearer ${token}` },
-          params: {
-            sha: branch.name,       // important: target branch
-            per_page: 100,
-            page,
-            since: "2000-01-01T00:00:00Z"
+      while (branchCommits < COMMIT_LIMIT_PER_BRANCH) {
+        const remainingCommits = COMMIT_LIMIT_PER_BRANCH - branchCommits;
+        const perPage = Math.min(100, remainingCommits);
+
+        const commits = (
+          await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/commits`, {
+            headers: { Authorization: `Bearer ${token}` },
+            params: {
+              sha: branch.name,
+              per_page: perPage,
+              page,
+              since: "2000-01-01T00:00:00Z"
+            }
+          })
+        ).data;
+
+        // Break if no more commits available
+        if (!commits.length) {
+          break;
+        }
+
+        // Process commits
+        for (const commit of commits) {
+          if (!commit?.sha) continue;
+
+          await Commit.updateOne(
+            { sha: commit.sha },
+            {
+              sha: commit.sha,
+              message: commit.commit.message,
+              authorName: commit.commit.author?.name,
+              authorEmail: commit.commit.author?.email,
+              date: commit.commit.author?.date,
+              html_url: commit.html_url,
+              repoName: repo,
+              orgLogin: org,
+              userGithubId: githubId,
+              branch: branch.name
+            },
+            { upsert: true }
+          );
+
+          branchCommits++;
+          totalCommits++;
+
+          // Break if we've reached the limit for this branch
+          if (branchCommits >= COMMIT_LIMIT_PER_BRANCH) {
+            break;
           }
-        })
-      ).data;
+        }
 
-      if (!commits.length) break;
-
-      for (const commit of commits) {
-        if (!commit?.sha) continue;
-
-        await Commit.updateOne(
-          { sha: commit.sha },
-          {
-            sha: commit.sha,
-            message: commit.commit.message,
-            authorName: commit.commit.author?.name,
-            authorEmail: commit.commit.author?.email,
-            date: commit.commit.author?.date,
-            html_url: commit.html_url,
-            repoName: repo,
-            orgLogin: org,
-            userGithubId: githubId,
-            branch: branch.name  // optional: for better tracking
-          },
-          { upsert: true }
-        );
-
-        totalCommits++;
+        page++;
       }
 
-      page++;
+    }
+
+
+  } catch (err) {
+    console.error(`Failed to fetch commits for ${org}/${repo}:`, err.message);
+    // Optionally log more details for debugging
+    if (err.response?.status === 403) {
+      console.error('Rate limit or permission issue - consider adding delay');
     }
   }
-
-  console.log(`Total commits fetched for ${org}/${repo}: ${totalCommits}`);
 }
 
 
