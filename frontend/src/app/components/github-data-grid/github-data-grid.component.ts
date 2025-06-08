@@ -83,12 +83,12 @@ export class GithubDataGridComponent
     ) {
       if (this.isConnected) {
         console.log('I am connected');
-        setTimeout(() => this.loadCollections(), 1000);
+        setTimeout(() => this.loadCollections(), 2000);
       } else {
         console.log('I am not connected');
         this.selectedEntity = 'users';
         this.searchText = '';
-        setTimeout(() => this.loadCollections(), 1000);
+        setTimeout(() => this.loadCollections(), 2000);
       }
     }
   }
@@ -173,7 +173,19 @@ export class GithubDataGridComponent
               filter: true,
             };
 
-            // Check if this column contains date data and apply date filter
+            // 🎯 Avatar field (image renderer)
+            if (key === 'avatar') {
+              return {
+                ...baseColumnDef,
+                cellRenderer: (params: any) => {
+                  return `<img src="${params.value}" alt="avatar" style="height: 40px; width: 40px; border-radius: 50%;" />`;
+                },
+                width: 160,
+                sortable: false,
+              };
+            }
+
+            // 📅 Date filter
             if (this.isDateColumn(key, flattenedData[0][key])) {
               return {
                 ...baseColumnDef,
@@ -184,10 +196,8 @@ export class GithubDataGridComponent
                     cellValue: string
                   ) => {
                     if (!cellValue) return -1;
-
                     const cellDate = new Date(cellValue);
                     if (isNaN(cellDate.getTime())) return -1;
-
                     cellDate.setHours(0, 0, 0, 0);
 
                     if (

@@ -16,17 +16,19 @@
         </mat-panel-description>
       </mat-expansion-panel-header>
 
-      <div *ngIf="!isConnected">
-        <button mat-flat-button color="primary" (click)="connectToGit()">
-          Connect to GitHub
-        </button>
-      </div>
-
-      <div *ngIf="isConnected">
+      <div *ngIf="isConnected; else notConnectedTemplate">
         <button mat-stroked-button color="warn" (click)="removeConnection()">
           Remove <mat-icon>visibility_off</mat-icon>
         </button>
       </div>
+
+      <ng-template #notConnectedTemplate>
+        <div>
+          <button mat-flat-button color="primary" (click)="connectToGit()">
+            Connect to GitHub
+          </button>
+        </div>
+      </ng-template>
     </mat-expansion-panel>
   </mat-accordion>
 
