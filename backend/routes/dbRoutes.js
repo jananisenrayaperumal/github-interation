@@ -1,18 +1,20 @@
 const express = require("express");
 const router = express.Router();
 
-// Import controller
 const {
 	getCollections,
 	getCollectionData,
 	searchCollection,
-	deleteGithubCollections
+	deleteGithubCollections,
+	getUserTickets
 } = require("../controllers/dbController");
+const { globalSearch } = require("../controllers/globalSearchController");
 
-// Routes using controller methods
-router.get("/:collection", getCollections);
 router.get("/collection/:name", getCollectionData);
 router.get("/collection/:name/search", searchCollection);
+router.get("/global-search", globalSearch);
+router.get("/user-tickets", getUserTickets);
 router.delete("/delete-github-collections", deleteGithubCollections);
+router.get("/:collection", getCollections);
 
 module.exports = router;

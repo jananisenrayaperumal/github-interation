@@ -7,6 +7,7 @@ import {
   inject,
   PLATFORM_ID,
   Inject,
+  AfterViewInit,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
@@ -37,7 +38,9 @@ ModuleRegistry.registerModules([AllCommunityModule]);
   styleUrls: ['./github-data-grid.component.css'],
   standalone: true,
 })
-export class GithubDataGridComponent implements OnInit, OnChanges {
+export class GithubDataGridComponent
+  implements OnInit, OnChanges, AfterViewInit
+{
   isBrowser: boolean;
   constructor(@Inject(PLATFORM_ID) private platformId: Object) {
     this.isBrowser = isPlatformBrowser(this.platformId);
@@ -87,6 +90,29 @@ export class GithubDataGridComponent implements OnInit, OnChanges {
         this.searchText = '';
         setTimeout(() => this.loadCollections(), 1000);
       }
+    }
+  }
+
+  ngAfterViewInit() {
+    const gridDiv = document.querySelector('.ag-theme-alpine.grid');
+
+    if (gridDiv) {
+      gridDiv.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement;
+
+        if (target && target.classList.contains('find-user-link')) {
+          event.preventDefault();
+
+          // Get the user value from data attribute
+          const user = target.getAttribute('data-user') || '';
+
+          // Construct your URL for the new tab
+          const userSearchUrl = `/user-search?user=${encodeURIComponent(user)}`;
+
+          // Open in new tab
+          window.open(userSearchUrl, '_blank');
+        }
+      });
     }
   }
 
@@ -161,29 +187,84 @@ export class GithubDataGridComponent implements OnInit, OnChanges {
     this.fetchCollectionData(collectionName);
   }
 
+  // onSearch(): void {
+  //   const collection = this.selectedEntity;
+  //   const query = this.searchText.trim();
+
+  //   if (!query) {
+  //     this.fetchCollectionData(collection);
+  //     return;
+  //   }
+
+  //   this.githubService.getFilteredCollectionData(collection, query).subscribe({
+  //     next: (data) => {
+  //       this.rowData = data;
+
+  //       if (data.length > 0) {
+  //         this.columnDefs = Object.keys(data[0]).map((key) => ({
+  //           field: key,
+  //           headerName: this.toTitleCase(key),
+  //         }));
+  //       } else {
+  //         this.columnDefs = [];
+  //       }
+  //     },
+  //     error: (err) => console.error('Search failed:', err),
+  //   });
+  // }
+
   onSearch(): void {
-    const collection = this.selectedEntity;
     const query = this.searchText.trim();
 
     if (!query) {
-      this.fetchCollectionData(collection);
+      // No search text → show data for selected collection or clear if none selected
+      if (this.selectedEntity) {
+        this.fetchCollectionData(this.selectedEntity);
+      } else {
+        this.rowData = [];
+        this.columnDefs = [];
+      }
       return;
     }
 
-    this.githubService.getFilteredCollectionData(collection, query).subscribe({
+    // If there is a query, always do global search ignoring selectedEntity
+    this.githubService.globalSearch(query).subscribe({
       next: (data) => {
         this.rowData = data;
-
         if (data.length > 0) {
-          this.columnDefs = Object.keys(data[0]).map((key) => ({
-            field: key,
-            headerName: this.toTitleCase(key),
-          }));
+          this.columnDefs = [
+            {
+              headerName: 'finduser-hyperlink',
+              field: 'findUser',
+              cellRenderer: (params: any) => {
+                const user =
+                  params.data.user || params.data.userLogin || 'unknown';
+                const encodedUser = encodeURIComponent(user); // to handle spaces or special chars
+                return `
+                  <a 
+                    href="/user-search?user=${encodedUser}" 
+                    target="_blank" 
+                    style="color:blue; text-decoration: underline;"
+                  >
+                    Find User
+                  </a>`;
+              },
+              width: 100,
+              // suppressMenu: true,
+              sortable: false,
+              filter: false,
+            },
+            ...Object.keys(data[0]).map((key) => ({
+              field: key,
+              headerName: this.toTitleCase(key),
+              filter: true,
+            })),
+          ];
         } else {
           this.columnDefs = [];
         }
       },
-      error: (err) => console.error('Search failed:', err),
+      error: (err) => console.error('Global search failed:', err),
     });
   }
 }

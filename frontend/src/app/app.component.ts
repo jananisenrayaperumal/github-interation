@@ -5,7 +5,6 @@ import { ActivatedRoute } from '@angular/router';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { GithubDataGridComponent } from './components/github-data-grid/github-data-grid.component';
 import { GithubDataService } from './services/github-data.service';
 import { Router } from '@angular/router';
 
@@ -17,7 +16,6 @@ import { Router } from '@angular/router';
     MatExpansionModule,
     MatIconModule,
     CommonModule,
-    GithubDataGridComponent,
   ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',

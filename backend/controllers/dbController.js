@@ -78,9 +78,60 @@ const deleteGithubCollections = async (req, res) => {
 	}
 };
 
+const getUserTickets = async (req, res) => {
+	const user = req.query.user;
+
+	if (!user) return res.status(400).json({ error: "User query param missing" });
+
+	try {
+		const Commit = require("../models/Commit");
+		const Issue = require("../models/Issue");
+		const PullRequest = require("../models/PullRequest");
+
+		const [commits, issues, pullRequests] = await Promise.all([
+			Commit.find({ authorName: new RegExp(user, "i") }).lean(),
+			Issue.find({ "user.login": new RegExp(user, "i") }).lean(),
+			PullRequest.find({ userLogin: new RegExp(user, "i") }).lean()
+		]);
+
+		const combinedResults = [
+			...commits.map(c => ({
+				type: "Commit",
+				id: c.sha,
+				user: c.authorName,
+				date: c.date,
+				title: "",
+				message: c.message
+			})),
+			...issues.map(i => ({
+				type: "Issue",
+				id: i.issueId,
+				user: i.user.login,
+				date: i.createdAt,
+				title: i.title,
+				message: i.body || ""
+			})),
+			...pullRequests.map(p => ({
+				type: "PullRequest",
+				id: p.id,
+				user: p.userLogin,
+				date: p.createdAt,
+				title: p.title,
+				message: p.body || ""
+			}))
+		];
+
+		res.status(200).json(combinedResults);
+	} catch (err) {
+		console.error("Error fetching tickets for user:", err);
+		res.status(500).json({ error: "Failed to fetch user tickets" });
+	}
+};
+
 module.exports = {
 	getCollections,
 	getCollectionData,
 	searchCollection,
-	deleteGithubCollections
+	deleteGithubCollections,
+	getUserTickets
 };

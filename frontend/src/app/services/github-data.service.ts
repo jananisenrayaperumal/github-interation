@@ -17,7 +17,9 @@ export class GithubDataService {
   }
 
   getDataFromCollection(collectionName: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/db/collection/${collectionName}`);
+    return this.http.get<any[]>(
+      `${this.baseUrl}/db/collection/${collectionName}`
+    );
   }
 
   getFilteredCollectionData(collection: string, searchText: string) {
@@ -29,6 +31,18 @@ export class GithubDataService {
         },
       }
     );
+  }
+
+  globalSearch(searchText: string) {
+    return this.http.get<any[]>(`${this.baseUrl}/db/global-search`, {
+      params: { q: searchText },
+    });
+  }
+
+  getUserTickets(user: string) {
+    return this.http.get<any[]>(`${this.baseUrl}/db/user-tickets`, {
+      params: { user },
+    });
   }
 
   syncData(token: string) {

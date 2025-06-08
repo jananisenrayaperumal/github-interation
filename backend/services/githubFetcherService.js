@@ -122,7 +122,11 @@ async function fetchAndStoreIssues(org, repo, token) {
 
     for (const issue of issues) {
       if (issue.pull_request) continue;
-
+      if (!issue.id) {
+        console.warn("Skipping issue with missing id:", issue);
+        continue;
+      }
+    
       await Issue.updateOne(
         { issueId: issue.id },
         {
@@ -143,64 +147,78 @@ async function fetchAndStoreIssues(org, repo, token) {
         { upsert: true }
       );
     }
+    
   } catch (err) {
     console.error(`Failed to fetch issues for ${org}/${repo}:`, err.message);
   }
 }
 
 async function fetchAndStorePullRequests(org, repo, token, githubId) {
-  try {
-    const pulls = (
-      await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/pulls`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { state: 'all', per_page: 100 }
-      })
-    ).data;
+  let page = 1;
+  const allPRs = [];
 
-    if (pulls.length === 0) {
+  try {
+    while (true) {
+      const issues = (
+        await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/issues`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { state: 'all', per_page: 100, page },
+        })
+      ).data;
+
+      if (!issues.length) break;
+
+      const prs = issues.filter((i) => i.pull_request);
+      allPRs.push(...prs);
+
+      page++;
+    }
+
+    if (allPRs.length === 0) {
       await PullRequest.updateOne(
         { repoName: repo, orgLogin: org, placeholder: true },
-        {
-          repoName: repo,
-          orgLogin: org,
-          placeholder: true,
-          userGithubId: githubId,
-        },
+        { repoName: repo, orgLogin: org, placeholder: true, userGithubId: githubId },
         { upsert: true }
       );
       return;
     }
 
-    for (const pr of pulls) {
+    for (const pr of allPRs) {
+      const prDetails = (
+        await axios.get(`${GIT_BASE_API}/repos/${org}/${repo}/pulls/${pr.number}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      ).data;
+
       await PullRequest.updateOne(
-        { id: pr.id },
+        { id: prDetails.id },
         {
-          id: pr.id,
-          number: pr.number,
-          title: pr.title,
-          state: pr.state,
-          createdAt: pr.created_at,
-          updatedAt: pr.updated_at,
-          closedAt: pr.closed_at,
-          mergedAt: pr.merged_at,
-          userLogin: pr.user?.login,
-          html_url: pr.html_url,
+          id: prDetails.id,
+          number: prDetails.number,
+          title: prDetails.title,
+          state: prDetails.state,
+          createdAt: prDetails.created_at,
+          updatedAt: prDetails.updated_at,
+          closedAt: prDetails.closed_at,
+          mergedAt: prDetails.merged_at,
+          userLogin: prDetails.user?.login,
+          html_url: prDetails.html_url,
           repoName: repo,
           orgLogin: org,
           userGithubId: githubId,
           placeholder: false,
-          assignees: pr.assignees?.map(a => a.login) || [],
-          requested_reviewers: pr.requested_reviewers?.map(r => r.login) || [],
-          mergedBy: pr.merged_by?.login || null,
+          assignees: prDetails.assignees?.map((a) => a.login) || [],
+          requested_reviewers: prDetails.requested_reviewers?.map((r) => r.login) || [],
+          mergedBy: prDetails.merged_by?.login || null,
         },
         { upsert: true }
       );
-      
     }
   } catch (err) {
     console.error(`Failed to fetch pull requests for ${org}/${repo}:`, err.message);
   }
 }
+
 
 
 async function fetchAndStoreCommits(org, repo, token, githubId) {
