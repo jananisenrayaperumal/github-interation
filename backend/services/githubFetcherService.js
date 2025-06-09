@@ -545,20 +545,38 @@ async function fetchAndStoreCommits(org, repo, token, githubId) {
         // Process commits
         for (const commit of commits) {
           if (!commit?.sha) continue;
-
           await Commit.updateOne(
             { sha: commit.sha },
             {
               sha: commit.sha,
-              message: commit.commit.message,
-              authorName: commit.commit.author?.name,
-              authorEmail: commit.commit.author?.email,
-              date: commit.commit.author?.date,
+              message: commit.commit?.message,
+              authorName: commit.commit?.author?.name,
+              authorEmail: commit.commit?.author?.email,
+              date: commit.commit?.author?.date,
               html_url: commit.html_url,
               repoName: repo,
               orgLogin: org,
               userGithubId: githubId,
-              branch: branch.name
+              branch: branch?.name,
+              committerName: commit.commit?.committer?.name,
+              committerEmail: commit.commit?.committer?.email,
+              committerDate: commit.commit?.committer?.date,
+              stats: commitDetails?.stats || {},
+              verified: commitDetails?.commit?.verification?.verified || false,
+              tree: commitDetails?.commit?.tree,
+              parents: commitDetails?.parents || [],
+              author: {
+                login: commitDetails?.author?.login,
+                id: commitDetails?.author?.id,
+                avatar_url: commitDetails?.author?.avatar_url,
+                html_url: commitDetails?.author?.html_url
+              },
+              committer: {
+                login: commitDetails?.committer?.login,
+                id: commitDetails?.committer?.id,
+                avatar_url: commitDetails?.committer?.avatar_url,
+                html_url: commitDetails?.committer?.html_url
+              }
             },
             { upsert: true }
           );
@@ -590,4 +608,8 @@ async function fetchAndStoreCommits(org, repo, token, githubId) {
 
 module.exports = {
   fetchAndStoreOrganizations,
+  fetchAndStoreMembers,
+  fetchAndStoreIssues,
+  fetchAndStorePullRequests,
+  fetchAndStoreCommits
 };

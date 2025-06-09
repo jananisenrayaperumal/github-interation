@@ -88,7 +88,8 @@ export class GithubDataGridComponent
         console.log('I am not connected');
         this.selectedEntity = 'users';
         this.searchText = '';
-        setTimeout(() => this.loadCollections(), 2000);
+        this.columnDefs = [];
+        this.rowData = [];
       }
     }
   }
