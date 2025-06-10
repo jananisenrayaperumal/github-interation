@@ -1,5 +1,9 @@
 // controllers/dbController.js
 const mongoose = require("mongoose");
+const Repository = require("../models/Repository");
+const Commit = require("../models/Commit");
+const PullRequest = require("../models/PullRequest");
+const Issue = require("../models/Issue");
 
 // Get all collection names
 const getCollections = async (req, res) => {
@@ -48,6 +52,115 @@ const searchCollection = async (req, res) => {
 	} catch (err) {
 		console.error(`Error searching in ${collectionName}:`, err);
 		res.status(500).json({ error: "Search failed" });
+	}
+};
+
+// Get all repositories, optionally filtered by userGithubId
+const getRepositories = async (req, res) => {
+	try {
+		const { userGithubId } = req.query;
+		const filter = userGithubId ? { userGithubId } : {};
+
+		const repos = await Repository.find(filter, "githubId name full_name organizationLogin").lean();
+		res.status(200).json(repos);
+	} catch (error) {
+		console.error("Error fetching repositories:", error);
+		res.status(500).json({ error: "Failed to fetch repositories" });
+	}
+};
+
+// Get aggregated data for a repo: commits with related PRs and issues
+const getRepoAggregatedData = async (req, res) => {
+	try {
+		const { orgLogin, repoName } = req.params;
+		const { page = 1, limit = 20, search, prState, issueState, authorName } = req.query;
+
+		const skip = (page - 1) * limit;
+
+		// Base match for commits
+		const baseMatch = {
+			repoName,
+			orgLogin
+		};
+
+		if (authorName) {
+			baseMatch.authorName = { $regex: authorName, $options: "i" };
+		}
+
+		const pipeline = [
+			{ $match: baseMatch },
+			{
+				$lookup: {
+					from: "pullrequests",
+					let: { repoName: "$repoName", orgLogin: "$orgLogin" },
+					pipeline: [
+						{
+							$match: {
+								$expr: {
+									$and: [
+										{ $eq: ["$repoName", "$$repoName"] },
+										{ $eq: ["$orgLogin", "$$orgLogin"] },
+										...(prState ? [{ $eq: ["$state", prState] }] : [])
+									]
+								}
+							}
+						}
+					],
+					as: "pullRequests"
+				}
+			},
+			{
+				$lookup: {
+					from: "issues",
+					let: { repository: "$repoName", org: "$orgLogin" },
+					pipeline: [
+						{
+							$match: {
+								$expr: {
+									$and: [
+										{ $eq: ["$repository", "$$repository"] },
+										{ $eq: ["$org", "$$org"] },
+										...(issueState ? [{ $eq: ["$state", issueState] }] : [])
+									]
+								}
+							}
+						}
+					],
+					as: "issues"
+				}
+			},
+			...(search
+				? [
+						{
+							$match: {
+								$or: [
+									{ message: { $regex: search, $options: "i" } },
+									{ "pullRequests.title": { $regex: search, $options: "i" } },
+									{ "issues.title": { $regex: search, $options: "i" } }
+								]
+							}
+						}
+					]
+				: []),
+			{ $sort: { date: -1 } },
+			{ $skip: skip },
+			{ $limit: parseInt(limit) }
+		];
+
+		const data = await Commit.aggregate(pipeline);
+
+		const totalCount = await Commit.countDocuments(baseMatch);
+
+		res.status(200).json({
+			page: parseInt(page),
+			limit: parseInt(limit),
+			totalCount,
+			totalPages: Math.ceil(totalCount / limit),
+			data
+		});
+	} catch (error) {
+		console.error("Error fetching aggregated repo data:", error);
+		res.status(500).json({ error: "Failed to fetch aggregated repo data" });
 	}
 };
 
@@ -133,5 +246,7 @@ module.exports = {
 	getCollectionData,
 	searchCollection,
 	deleteGithubCollections,
-	getUserTickets
+	getUserTickets,
+	getRepositories,
+	getRepoAggregatedData
 };

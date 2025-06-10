@@ -100,7 +100,6 @@ const buildPullRequestQuery = ({ regex, numericSearch, hashRegex }) => {
         $or: [
             // Text fields
             { title: regex },
-            { body: regex },
             { userLogin: regex },
             { repoName: regex },
             { orgLogin: regex },

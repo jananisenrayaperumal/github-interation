@@ -6,7 +6,9 @@ const {
 	getCollectionData,
 	searchCollection,
 	deleteGithubCollections,
-	getUserTickets
+	getUserTickets,
+	getRepositories,
+	getRepoAggregatedData
 } = require("../controllers/dbController");
 const { globalSearch } = require("../controllers/globalSearchController");
 
@@ -15,6 +17,8 @@ router.get("/collection/:name/search", searchCollection);
 router.get("/global-search", globalSearch);
 router.get("/user-tickets", getUserTickets);
 router.delete("/delete-github-collections", deleteGithubCollections);
+router.get("/repos", getRepositories);
+router.get("/repos/:orgLogin/:repoName/data", getRepoAggregatedData);
 router.get("/:collection", getCollections);
 
 module.exports = router;

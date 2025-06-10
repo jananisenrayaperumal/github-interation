@@ -64,6 +64,7 @@ export class GithubDataGridComponent
     resizable: true,
     wrapText: true,
     autoHeight: true,
+    width: 250,
     cellStyle: {
       whiteSpace: 'nowrap',
       overflow: 'hidden',
