@@ -19,6 +19,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatInputModule } from '@angular/material/input';
 import { ColDef, ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import { GithubDataService } from '../../services/github-data.service';
+import { Router, ActivatedRoute } from '@angular/router';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -42,7 +43,10 @@ export class GithubDataGridComponent
   implements OnInit, OnChanges, AfterViewInit
 {
   isBrowser: boolean;
-  constructor(@Inject(PLATFORM_ID) private platformId: Object) {
+  constructor(
+    @Inject(PLATFORM_ID) private platformId: Object,
+    private router: Router
+  ) {
     this.isBrowser = isPlatformBrowser(this.platformId);
   }
 
@@ -116,6 +120,10 @@ export class GithubDataGridComponent
         }
       });
     }
+  }
+
+  goToRelationshipTable() {
+    this.router.navigate(['/relationship-table']);
   }
 
   loadCollections(): void {

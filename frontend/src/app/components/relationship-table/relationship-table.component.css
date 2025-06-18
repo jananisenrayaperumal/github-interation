@@ -1,0 +1,87 @@
+.relationship-container {
+  background-color: white;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+}
+
+.main-toolbar {
+  background: white !important;
+  color: #333;
+  box-shadow: none;
+  border-bottom: 1px solid #ddd;
+}
+
+.toolbar-title {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.selection-card,
+.filters-card,
+.grid-card,
+.empty-state {
+  background-color: white;
+  box-shadow: none;
+  border: 1px solid #eee;
+  margin-top: 20px;
+}
+
+.mat-card-header {
+  border-bottom: 1px solid #eee;
+  margin-bottom: 10px;
+}
+
+.repo-select,
+.filter-field,
+.search-field {
+  width: 320px;
+  margin-right: 10px;
+}
+
+.filters-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.search-section {
+  margin-bottom: 15px;
+}
+
+.clear-filters-btn {
+  align-self: center;
+}
+
+.data-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.grid-content {
+  margin-top: 10px;
+}
+
+.custom-grid {
+  background: white;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 40px 0;
+}
+
+.loading-text {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #555;
+}
+
+.empty-content {
+  text-align: center;
+  color: #666;
+}

@@ -1,0 +1,190 @@
+<div class="relationship-container">
+  <mat-toolbar class="main-toolbar">
+    <span class="toolbar-title">Relationship Builder</span>
+    <span class="spacer"></span>
+  </mat-toolbar>
+
+  <mat-card class="selection-card">
+    <mat-card-content>
+      <mat-form-field appearance="outline" class="repo-select">
+        <mat-label>Repository</mat-label>
+        <mat-select
+          [(value)]="selectedRepo"
+          (selectionChange)="onRepoChange()"
+          [disabled]="loadingRepos"
+        >
+          <mat-option *ngFor="let repo of repositories" [value]="repo">
+            <div class="repo-option">
+              <span class="repo-name">{{ repo.full_name }}</span>
+            </div>
+          </mat-option>
+        </mat-select>
+        <mat-icon matPrefix>folder</mat-icon>
+      </mat-form-field>
+
+      <div class="loading-repos" *ngIf="loadingRepos">
+        <mat-spinner diameter="24"></mat-spinner>
+        <span>Loading repositories...</span>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Search and Filters Card -->
+  <mat-card class="filters-card" *ngIf="selectedRepo">
+    <mat-card-header>
+      <mat-card-title> Search & Filters </mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      <!-- Search Bar -->
+      <div class="search-section">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Global Search</mat-label>
+          <mat-icon matPrefix>search</mat-icon>
+          <input
+            matInput
+            [(ngModel)]="searchTerm"
+            (input)="onSearchChange()"
+            placeholder="Search commits, PRs, issues..."
+          />
+          <button
+            mat-icon-button
+            matSuffix
+            *ngIf="searchTerm"
+            (click)="clearSearch()"
+          >
+            <mat-icon>clear</mat-icon>
+          </button>
+        </mat-form-field>
+      </div>
+
+      <!-- Filter Controls -->
+      <div class="filters-section">
+        <mat-form-field appearance="outline" class="filter-field">
+          <mat-label>PR State</mat-label>
+          <mat-select
+            [(value)]="prStateFilter"
+            (selectionChange)="applyFilters()"
+          >
+            <mat-option value="">All States</mat-option>
+            <mat-option value="open">Open</mat-option>
+            <mat-option value="closed">Closed</mat-option>
+            <mat-option value="merged">Merged</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="filter-field">
+          <mat-label>Issue State</mat-label>
+          <mat-select
+            [(value)]="issueStateFilter"
+            (selectionChange)="applyFilters()"
+          >
+            <mat-option value="">All States</mat-option>
+            <mat-option value="open">Open</mat-option>
+            <mat-option value="closed">Closed</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="filter-field">
+          <mat-label>Author Name</mat-label>
+          <input
+            matInput
+            [(ngModel)]="authorFilter"
+            (input)="applyFilters()"
+            placeholder="Filter by author..."
+          />
+        </mat-form-field>
+
+        <button
+          mat-raised-button
+          color="accent"
+          (click)="clearAllFilters()"
+          class="clear-filters-btn"
+        >
+          <mat-icon>clear_all</mat-icon>
+          Clear All
+        </button>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Loading State -->
+  <div class="loading-container" *ngIf="loadingData">
+    <mat-spinner diameter="50"></mat-spinner>
+    <p class="loading-text">Loading relationship data...</p>
+  </div>
+
+  <!-- Data Grid Card -->
+  <mat-card class="grid-card" *ngIf="selectedRepo && !loadingData">
+    <mat-card-header>
+      <mat-card-title class="grid-title">
+        {{ selectedRepo.full_name }} - Aggregated Data
+      </mat-card-title>
+      <mat-card-subtitle *ngIf="totalCount > 0">
+        <div class="data-summary">
+          <mat-chip class="summary-chip">
+            {{ rowData.length }} commits
+          </mat-chip>
+          <mat-chip class="summary-chip">
+            {{ totalCount }} total records
+          </mat-chip>
+          <mat-chip class="summary-chip">
+            Page {{ currentPage }} of {{ totalPages }}
+          </mat-chip>
+        </div>
+      </mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content class="grid-content">
+      <ag-grid-angular
+        class="ag-theme-material custom-grid"
+        [rowData]="rowData"
+        [columnDefs]="columnDefs"
+        [defaultColDef]="defaultColDef"
+        [masterDetail]="true"
+        [detailCellRendererParams]="detailCellRendererParams"
+        [pagination]="true"
+        [paginationPageSize]="20"
+        [suppressPaginationPanel]="false"
+        [animateRows]="true"
+        [enableRangeSelection]="true"
+        [enableCellTextSelection]="true"
+        [rowSelection]="'multiple'"
+        (gridReady)="onGridReady($event)"
+        style="height: 600px; width: 100%"
+      >
+      </ag-grid-angular>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Empty State -->
+  <mat-card
+    class="empty-state"
+    *ngIf="!selectedRepo && !loadingRepos && repositories.length > 0"
+  >
+    <mat-card-content>
+      <div class="empty-content">
+        <h3>Select a Repository</h3>
+        <p>
+          Choose a repository from the dropdown above to explore its data
+          relationships between commits, pull requests, and issues.
+        </p>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- No Repositories State -->
+  <mat-card
+    class="empty-state"
+    *ngIf="!loadingRepos && repositories.length === 0"
+  >
+    <mat-card-content>
+      <div class="empty-content">
+        <h3>No Repositories Found</h3>
+        <p>
+          No repositories are available. Please sync your GitHub data first.
+        </p>
+      </div>
+    </mat-card-content>
+  </mat-card>
+</div>
