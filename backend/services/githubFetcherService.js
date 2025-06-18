@@ -505,7 +505,7 @@ async function fetchAndStorePullRequests(org, repo, token, githubId) {
 }
 
 async function fetchAndStoreCommits(org, repo, token, githubId) {
-  const COMMIT_LIMIT_PER_BRANCH = 20;
+  const COMMIT_LIMIT_PER_BRANCH = 100;
   let totalCommits = 0;
 
   try {
